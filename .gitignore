@@ -4,3 +4,8 @@ __pycache__/
 .env
 .vscode/
 .idea/
+*.mp4
+*.avi
+*.ply
+*.pcd
+*.npy
