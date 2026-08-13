@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-scan"
+version = "0.1.0"
+description = "Portable RGB-D spatial mapping system"
+requires-python = ">=3.10"
+dependencies = [
+    "depthai>=3,<4",
+    "numpy",
+    "opencv-python",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
