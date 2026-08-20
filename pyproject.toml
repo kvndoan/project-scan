@@ -5,12 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "project-scan"
 version = "0.1.0"
-description = "Portable RGB-D spatial mapping system"
+description = "Portable spatial mapping system using OAK-D Pro and visual-inertial SLAM"
 requires-python = ">=3.10"
 dependencies = [
-    "depthai>=3,<4",
     "numpy",
-    "opencv-python",
+    "spectacularai[oak]==1.53.2",
 ]
 
 [tool.setuptools.packages.find]

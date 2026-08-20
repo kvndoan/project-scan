@@ -1,8 +1,15 @@
 import documentation:
-cv2 -> https://docs.opencv.org/5.0/
-depthai -> https://docs.luxonis.com/software-v3/depthai
+numpy -> https://numpy.org/doc/
+spectacularAI -> https://spectacularai.github.io/docs/sdk/
 
+first time
 ```
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+py -3.12 -m venv .venv
+..venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
+
+subsequent
+```
+..venv\Scripts\Activate.ps1
 ```
