@@ -1,25 +1,55 @@
 import argparse
 
-from project_scan.session import ScanSession
-from project_scan.slam.spectacular import SpectacularSlam
+import cv2
+
+from project_scan.session import (
+    ScanSession,
+)
+from project_scan.slam.spectacular import (
+    SpectacularSlam,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("name", help="Zone name")
+
+    parser.add_argument(
+        "name",
+        help="Zone name",
+    )
+
     args = parser.parse_args()
 
-    scan = ScanSession(args.name, SpectacularSlam())
+    backend = SpectacularSlam()
+
+    scan = ScanSession(
+        args.name,
+        backend,
+    )
+
     scan.start()
 
-    print(f"Scanning: {args.name}")
-    print("Press Ctrl+C to stop and save.")
+    print(
+        f"Scanning: {args.name}"
+    )
+    print(
+        "Press Q in the camera window "
+        "or Ctrl+C to stop and save."
+    )
     print()
 
     try:
         while True:
-            update = scan.wait_for_update()
-            position = update.camera_to_world[:3, 3]
+            update = (
+                scan.wait_for_update()
+            )
+
+            position = (
+                update.camera_to_world[
+                    :3,
+                    3,
+                ]
+            )
 
             print(
                 "\r"
@@ -27,17 +57,45 @@ def main() -> None:
                 f"x={position[0]:+.3f} "
                 f"y={position[1]:+.3f} "
                 f"z={position[2]:+.3f} m  "
-                f"keyframes={update.mapping.keyframes:<4} "
-                f"dense_points={update.mapping.dense_points:<8}",
+                f"keyframes="
+                f"{update.mapping.keyframes:<4} "
+                f"dense_points="
+                f"{update.mapping.dense_points:<8}",
                 end="",
                 flush=True,
             )
+
+            frame = (
+                backend.get_preview_frame()
+            )
+
+            if frame is not None:
+                cv2.imshow(
+                    "Project Scan",
+                    frame,
+                )
+
+            if (
+                cv2.waitKey(1) & 0xFF
+                == ord("q")
+            ):
+                break
+
     except KeyboardInterrupt:
+        pass
+
+    finally:
         print()
         print()
 
-    zone_dir = scan.stop()
-    print(f"Saved zone: {zone_dir.resolve()}")
+        cv2.destroyAllWindows()
+
+        zone_dir = scan.stop()
+
+    print(
+        f"Saved zone: "
+        f"{zone_dir.resolve()}"
+    )
 
 
 if __name__ == "__main__":
