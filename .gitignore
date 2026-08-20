@@ -10,3 +10,4 @@ __pycache__/
 *.pcd
 *.npy
 *.egg-info/
+zones/

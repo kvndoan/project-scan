@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -24,16 +25,11 @@ class SlamBackend(ABC):
         self.start()
         return self
 
-    def __exit__(
-        self,
-        exc_type,
-        exc_value,
-        traceback,
-    ) -> None:
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.stop()
 
     @abstractmethod
-    def start(self) -> None:
+    def start(self, map_path: Path | None = None) -> None:
         pass
 
     @abstractmethod
