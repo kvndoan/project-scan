@@ -13,3 +13,18 @@ subsequent
 ```
 .\.venv\Scripts\Activate.ps1
 ```
+
+current tests
+```
+python scripts/scan.py "room test"
+python scripts/scan.py "low light test" --low-light
+```
+
+to view zone from tests
+```
+$zone = Get-ChildItem .\zones -Directory |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+    
+python scripts/view_zone.py $zone.FullName
+```

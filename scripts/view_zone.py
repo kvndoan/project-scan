@@ -32,6 +32,11 @@ def main() -> None:
 
     point_cloud = o3d.io.read_point_cloud(str(map_path))
 
+    point_cloud, _ = point_cloud.remove_statistical_outlier(
+        nb_neighbors=20,
+        std_ratio=2.0,
+    )
+
     if not point_cloud.has_points():
         raise RuntimeError("Map contains no points")
 

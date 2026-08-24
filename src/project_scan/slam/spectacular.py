@@ -10,11 +10,16 @@ import spectacularAI
 from .base import MappingStats, SlamBackend, SlamUpdate
 
 
-IR_DOT_BRIGHTNESS_MA = 400
+IR_DOT_INTENSITY = 0.5
+IR_FLOOD_INTENSITY = 0.3
+
+MAP_CELL_SIZE_M = 0.03
+KEYFRAME_DISTANCE_M = 0.15
 
 
 class SpectacularSlam(SlamBackend):
-    def __init__(self) -> None:
+    def __init__(self, low_light: bool = False) -> None:
+        self._low_light = low_light
         self._resources: ExitStack | None = None
         self._session = None
         self._preview_queue = None
@@ -40,6 +45,8 @@ class SpectacularSlam(SlamBackend):
             ]
         }
 
+        config.useVioAutoExposure = self._low_light
+
         if recording_path is not None:
             config.recordingFolder = str(
                 recording_path
@@ -54,12 +61,15 @@ class SpectacularSlam(SlamBackend):
         preview_out = pipeline.create(
             depthai.node.XLinkOut
         )
+
         preview_out.setStreamName(
             "preview"
         )
+
         preview_out.input.setBlocking(
             False
         )
+
         preview_out.input.setQueueSize(
             1
         )
@@ -81,9 +91,14 @@ class SpectacularSlam(SlamBackend):
                 )
             )
 
-            device.setIrLaserDotProjectorBrightness(
-                IR_DOT_BRIGHTNESS_MA
+            device.setIrLaserDotProjectorIntensity(
+                IR_DOT_INTENSITY
             )
+
+            if self._low_light:
+                device.setIrFloodLightIntensity(
+                    IR_FLOOD_INTENSITY
+                )
 
             preview_queue = device.getOutputQueue(
                 name="preview",
@@ -179,7 +194,8 @@ class SpectacularSlam(SlamBackend):
                 "process",
                 str(self._recording_path),
                 "--device_preset=oak-d",
-                "--key_frame_distance=0.15",
+                f"--key_frame_distance={KEYFRAME_DISTANCE_M}",
+                f"--cell_size={MAP_CELL_SIZE_M}",
                 str(path),
             ],
             check=True,

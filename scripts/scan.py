@@ -16,9 +16,17 @@ def main() -> None:
         help="Zone name",
     )
 
+    parser.add_argument(
+        "--low-light",
+        action="store_true",
+        help="Enable IR flood and low-light VIO exposure",
+    )
+
     args = parser.parse_args()
 
-    backend = SpectacularSlam()
+    backend = SpectacularSlam(
+        low_light=args.low_light
+    )
 
     scan = ScanSession(
         args.name,
@@ -29,6 +37,15 @@ def main() -> None:
 
     print(
         f"Scanning: {args.name}"
+    )
+
+    print(
+        "Mode: "
+        + (
+            "low light"
+            if args.low_light
+            else "normal"
+        )
     )
 
     print(
