@@ -25,11 +25,19 @@ class SlamBackend(ABC):
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ) -> None:
         self.stop()
 
     @abstractmethod
-    def start(self, map_path: Path | None = None) -> None:
+    def start(
+        self,
+        recording_path: Path | None = None,
+    ) -> None:
         pass
 
     @abstractmethod
@@ -38,4 +46,8 @@ class SlamBackend(ABC):
 
     @abstractmethod
     def wait_for_update(self) -> SlamUpdate:
+        pass
+
+    @abstractmethod
+    def export_map(self, path: Path) -> None:
         pass

@@ -1,5 +1,7 @@
 from contextlib import ExitStack
 from pathlib import Path
+import shutil
+import subprocess
 
 import depthai
 import numpy as np
@@ -8,16 +10,20 @@ import spectacularAI
 from .base import MappingStats, SlamBackend, SlamUpdate
 
 
+IR_DOT_BRIGHTNESS_MA = 400
+
+
 class SpectacularSlam(SlamBackend):
     def __init__(self) -> None:
         self._resources: ExitStack | None = None
         self._session = None
         self._preview_queue = None
+        self._recording_path: Path | None = None
         self._mapping = MappingStats()
 
     def start(
         self,
-        map_path: Path | None = None,
+        recording_path: Path | None = None,
     ) -> None:
         if self._resources is not None:
             raise RuntimeError(
@@ -26,9 +32,7 @@ class SpectacularSlam(SlamBackend):
 
         pipeline = depthai.Pipeline()
 
-        config = (
-            spectacularAI.depthai.Configuration()
-        )
+        config = spectacularAI.depthai.Configuration()
 
         config.internalParameters = {
             "extendParameterSets": [
@@ -36,17 +40,15 @@ class SpectacularSlam(SlamBackend):
             ]
         }
 
-        if map_path is not None:
-            config.mapSavePath = str(
-                map_path
+        if recording_path is not None:
+            config.recordingFolder = str(
+                recording_path
             )
 
-        vio_pipeline = (
-            spectacularAI.depthai.Pipeline(
-                pipeline,
-                config,
-                self._on_mapping_output,
-            )
+        vio_pipeline = spectacularAI.depthai.Pipeline(
+            pipeline,
+            config,
+            self._on_mapping_output,
         )
 
         preview_out = pipeline.create(
@@ -79,12 +81,14 @@ class SpectacularSlam(SlamBackend):
                 )
             )
 
-            preview_queue = (
-                device.getOutputQueue(
-                    name="preview",
-                    maxSize=1,
-                    blocking=False,
-                )
+            device.setIrLaserDotProjectorBrightness(
+                IR_DOT_BRIGHTNESS_MA
+            )
+
+            preview_queue = device.getOutputQueue(
+                name="preview",
+                maxSize=1,
+                blocking=False,
             )
 
         except Exception:
@@ -92,12 +96,10 @@ class SpectacularSlam(SlamBackend):
             raise
 
         self._mapping = MappingStats()
-
+        self._recording_path = recording_path
         self._resources = resources
         self._session = session
-        self._preview_queue = (
-            preview_queue
-        )
+        self._preview_queue = preview_queue
 
     def stop(self) -> None:
         if self._resources is None:
@@ -109,17 +111,13 @@ class SpectacularSlam(SlamBackend):
         self._session = None
         self._preview_queue = None
 
-    def wait_for_update(
-        self,
-    ) -> SlamUpdate:
+    def wait_for_update(self) -> SlamUpdate:
         if self._session is None:
             raise RuntimeError(
                 "SLAM backend has not been started"
             )
 
-        output = (
-            self._session.waitForOutput()
-        )
+        output = self._session.waitForOutput()
 
         camera_pose = output.getCameraPose(
             0
@@ -133,12 +131,8 @@ class SpectacularSlam(SlamBackend):
 
         return SlamUpdate(
             timestamp=camera_pose.time,
-            tracking_status=(
-                output.status.name
-            ),
-            camera_to_world=(
-                camera_to_world
-            ),
+            tracking_status=output.status.name,
+            camera_to_world=camera_to_world,
             mapping=self._mapping,
         )
 
@@ -148,9 +142,7 @@ class SpectacularSlam(SlamBackend):
         if self._preview_queue is None:
             return None
 
-        frame = (
-            self._preview_queue.tryGet()
-        )
+        frame = self._preview_queue.tryGet()
 
         if frame is None:
             return None
@@ -158,6 +150,39 @@ class SpectacularSlam(SlamBackend):
         return np.array(
             frame.getCvFrame(),
             copy=True,
+        )
+
+    def export_map(
+        self,
+        path: Path,
+    ) -> None:
+        if self._resources is not None:
+            raise RuntimeError(
+                "Stop SLAM before exporting the map"
+            )
+
+        if self._recording_path is None:
+            raise RuntimeError(
+                "No recording is available"
+            )
+
+        sai_cli = shutil.which("sai-cli")
+
+        if sai_cli is None:
+            raise RuntimeError(
+                "sai-cli was not found"
+            )
+
+        subprocess.run(
+            [
+                sai_cli,
+                "process",
+                str(self._recording_path),
+                "--device_preset=oak-d",
+                "--key_frame_distance=0.15",
+                str(path),
+            ],
+            check=True,
         )
 
     def _on_mapping_output(

@@ -2,9 +2,7 @@ import argparse
 
 import cv2
 
-from project_scan.session import (
-    ScanSession,
-)
+from project_scan.session import ScanSession
 from project_scan.slam.spectacular import (
     SpectacularSlam,
 )
@@ -32,10 +30,12 @@ def main() -> None:
     print(
         f"Scanning: {args.name}"
     )
+
     print(
         "Press Q in the camera window "
-        "or Ctrl+C to stop and save."
+        "or Ctrl+C to stop."
     )
+
     print()
 
     try:
@@ -85,13 +85,19 @@ def main() -> None:
         pass
 
     finally:
-        print()
-        print()
-
         cv2.destroyAllWindows()
 
-        zone_dir = scan.stop()
+    print()
+    print()
+    print(
+        "Scan stopped. "
+        "Building final map..."
+    )
+    print()
 
+    zone_dir = scan.stop()
+
+    print()
     print(
         f"Saved zone: "
         f"{zone_dir.resolve()}"
