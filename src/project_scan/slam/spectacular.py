@@ -1,5 +1,6 @@
 from contextlib import ExitStack
 from pathlib import Path
+from threading import Lock
 import shutil
 import subprocess
 
@@ -12,19 +13,33 @@ from .base import MappingStats, SlamBackend, SlamUpdate
 
 IR_DOT_INTENSITY = 0.5
 IR_FLOOD_INTENSITY = 0.3
-
-MAP_CELL_SIZE_M = 0.03
 KEYFRAME_DISTANCE_M = 0.15
+LIVE_MAP_MAX_POINTS = 100_000
 
 
 class SpectacularSlam(SlamBackend):
-    def __init__(self, low_light: bool = False) -> None:
+    def __init__(
+        self,
+        low_light: bool = False,
+        live_map: bool = False,
+    ) -> None:
         self._low_light = low_light
+        self._live_map_enabled = live_map
+
         self._resources: ExitStack | None = None
         self._session = None
         self._preview_queue = None
         self._recording_path: Path | None = None
         self._mapping = MappingStats()
+
+        self._live_keyframes: dict[
+            int,
+            tuple[np.ndarray, np.ndarray | None],
+        ] = {}
+
+        self._live_map_lock = Lock()
+        self._live_map_version = 0
+        self._shown_live_map_version = -1
 
     def start(
         self,
@@ -111,6 +126,10 @@ class SpectacularSlam(SlamBackend):
             raise
 
         self._mapping = MappingStats()
+        self._live_keyframes = {}
+        self._live_map_version = 0
+        self._shown_live_map_version = -1
+
         self._recording_path = recording_path
         self._resources = resources
         self._session = session
@@ -126,7 +145,9 @@ class SpectacularSlam(SlamBackend):
         self._session = None
         self._preview_queue = None
 
-    def wait_for_update(self) -> SlamUpdate:
+    def wait_for_update(
+        self,
+    ) -> SlamUpdate:
         if self._session is None:
             raise RuntimeError(
                 "SLAM backend has not been started"
@@ -167,6 +188,70 @@ class SpectacularSlam(SlamBackend):
             copy=True,
         )
 
+    def get_live_point_cloud(
+        self,
+    ) -> (
+        tuple[np.ndarray, np.ndarray | None]
+        | None
+    ):
+        if not self._live_map_enabled:
+            return None
+
+        with self._live_map_lock:
+            if (
+                self._live_map_version
+                == self._shown_live_map_version
+            ):
+                return None
+
+            keyframes = list(
+                self._live_keyframes.values()
+            )
+
+            version = self._live_map_version
+
+        if not keyframes:
+            return None
+
+        points = np.concatenate(
+            [
+                item[0]
+                for item in keyframes
+            ]
+        )
+
+        have_colors = all(
+            item[1] is not None
+            for item in keyframes
+        )
+
+        colors = None
+
+        if have_colors:
+            colors = np.concatenate(
+                [
+                    item[1]
+                    for item in keyframes
+                ]
+            )
+
+        if len(points) > LIVE_MAP_MAX_POINTS:
+            step = int(
+                np.ceil(
+                    len(points)
+                    / LIVE_MAP_MAX_POINTS
+                )
+            )
+
+            points = points[::step]
+
+            if colors is not None:
+                colors = colors[::step]
+
+        self._shown_live_map_version = version
+
+        return points, colors
+
     def export_map(
         self,
         path: Path,
@@ -181,7 +266,9 @@ class SpectacularSlam(SlamBackend):
                 "No recording is available"
             )
 
-        sai_cli = shutil.which("sai-cli")
+        sai_cli = shutil.which(
+            "sai-cli"
+        )
 
         if sai_cli is None:
             raise RuntimeError(
@@ -194,8 +281,10 @@ class SpectacularSlam(SlamBackend):
                 "process",
                 str(self._recording_path),
                 "--device_preset=oak-d",
-                f"--key_frame_distance={KEYFRAME_DISTANCE_M}",
-                f"--cell_size={MAP_CELL_SIZE_M}",
+                (
+                    "--key_frame_distance="
+                    f"{KEYFRAME_DISTANCE_M}"
+                ),
                 str(path),
             ],
             check=True,
@@ -206,6 +295,89 @@ class SpectacularSlam(SlamBackend):
         output,
     ) -> None:
         slam_map = output.map
+
+        if self._live_map_enabled:
+            updated = {}
+
+            for frame_id in (
+                output.updatedKeyFrames
+            ):
+                keyframe = (
+                    slam_map.keyFrames.get(
+                        frame_id
+                    )
+                )
+
+                if (
+                    keyframe is None
+                    or keyframe.pointCloud is None
+                ):
+                    continue
+
+                frame_set = keyframe.frameSet
+
+                target_frame = (
+                    frame_set.rgbFrame
+                    or frame_set.primaryFrame
+                )
+
+                if target_frame is None:
+                    continue
+
+                positions = np.array(
+                    keyframe.pointCloud
+                    .getPositionData(),
+                    dtype=np.float64,
+                    copy=True,
+                )
+
+                if positions.size == 0:
+                    continue
+
+                camera_to_world = np.asarray(
+                    target_frame
+                    .cameraPose
+                    .getCameraToWorldMatrix(),
+                    dtype=np.float64,
+                )
+
+                positions = (
+                    positions
+                    @ camera_to_world[
+                        :3,
+                        :3,
+                    ].T
+                    + camera_to_world[
+                        :3,
+                        3,
+                    ]
+                )
+
+                colors = None
+
+                if (
+                    keyframe.pointCloud
+                    .hasColors()
+                ):
+                    colors = np.array(
+                        keyframe.pointCloud
+                        .getRGB24Data(),
+                        dtype=np.uint8,
+                        copy=True,
+                    )
+
+                updated[frame_id] = (
+                    positions,
+                    colors,
+                )
+
+            if updated:
+                with self._live_map_lock:
+                    self._live_keyframes.update(
+                        updated
+                    )
+
+                    self._live_map_version += 1
 
         dense_points = sum(
             keyframe.pointCloud.size()
